@@ -14,7 +14,6 @@ from utils import extract_speaker_name
 # --- corrections helpers ---
 def _flex_space(s: str) -> str:
     # allow flexible whitespace inside multi-word phrases
-    import re
     return re.sub(r"\s+", r"\\s+", re.escape(s.strip()))
 
 
@@ -23,7 +22,6 @@ def _compile_boundary_corrections(corrections: Dict[str, str]):
     corrections: wrong -> right
     returns: [(compiled_pattern, right), ...] sorted longest-first
     """
-    import re
     compiled = []
     for wrong, right in corrections.items():
         patt = rf"(?i)(?<!\w){_flex_space(wrong)}(?!\w)"  # Unicode-safe token boundaries
@@ -361,4 +359,5 @@ def insert_ellipses_at_likely_breaks(segment_chunks: List[WtWord], no_asterisks:
             if current_word.speaker != prvs_word.speaker:
                 raise ValueError("Only meant to be used on single-speaker collection")
             if current_word.start - prvs_word.end > 10 and not ends_with_break(prvs_word.text):
+
                 prvs_word.text = prvs_word.text.strip() + ("" if no_asterisks else "*") + "..."
