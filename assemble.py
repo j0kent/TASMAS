@@ -11,6 +11,33 @@ from deepmultilingualpunctuation import PunctuationModel
 from tqdm import tqdm
 from utils import extract_speaker_name
 
+# --- corrections helpers ---
+def _flex_space(s: str) -> str:
+    # allow flexible whitespace inside multi-word phrases
+    import re
+    return re.sub(r"\s+", r"\\s+", re.escape(s.strip()))
+
+
+def _compile_boundary_corrections(corrections: Dict[str, str]):
+    """
+    corrections: wrong -> right
+    returns: [(compiled_pattern, right), ...] sorted longest-first
+    """
+    import re
+    compiled = []
+    for wrong, right in corrections.items():
+        patt = rf"(?i)(?<!\w){_flex_space(wrong)}(?!\w)"  # Unicode-safe token boundaries
+        compiled.append((re.compile(patt), right, len(wrong)))
+    compiled.sort(key=lambda t: t[2], reverse=True)  # longest wrong first
+    return [(p, r) for (p, r, _) in compiled]
+
+
+def _apply_corrections_text_only(text: str, compiled_patterns):
+    for patt, repl in compiled_patterns:
+        text = patt.sub(repl, text)
+    return text
+# --- end corrections helpers ---
+
 class WtWordEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (WtWord, WtWordList)):
@@ -269,14 +296,17 @@ def update_word_texts(word_list: WtWordList, new_text: str, original_words: List
 def output_items(input_dir, corrections, show_timestamps, format_string, max_speaker_width, collapsed_items):
     output_builder = []
 
+    compiled = _compile_boundary_corrections(corrections) if corrections else []
+
     for item in collapsed_items:
         timestamp = f"[{item.start}-{item.end}] " if show_timestamps else ""
-        out_string = f"{timestamp}{item.speaker.rjust(max_speaker_width)}: \"{item.text}\""
 
-        if corrections is not None:
-            for key, value in corrections.items():
-                out_string = out_string.replace(key, value)
+        # corrections applied ONLY to the utterance text, not the label
+        text = item.text
+        if compiled:
+            text = _apply_corrections_text_only(text, compiled)
 
+        out_string = f"{timestamp}{item.speaker.rjust(max_speaker_width)}: \"{text}\""
         output_builder.append(out_string)
 
     output_path = os.path.join(input_dir, "transcript.txt")
